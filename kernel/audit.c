@@ -212,11 +212,11 @@ struct audit_reply {
 int auditd_test_task(struct task_struct *task)
 {
 	int rc;
-	struct auditd_connection *ac;
+	struct auditd_connection *adutidConnection;
 
 	rcu_read_lock();
-	ac = rcu_dereference(auditd_conn);
-	rc = (ac && ac->pid == task_tgid(task) ? 1 : 0);
+	adutidConnection = rcu_dereference(auditd_conn);
+	rc = (adutidConnection && adutidConnection->pid == task_tgid(task) ? 1 : 0);
 	rcu_read_unlock();
 
 	return rc;
@@ -261,14 +261,14 @@ static bool audit_ctl_owner_current(void)
 static pid_t auditd_pid_vnr(void)
 {
 	pid_t pid;
-	const struct auditd_connection *ac;
+	const struct auditd_connection *adutidConnection;
 
 	rcu_read_lock();
-	ac = rcu_dereference(auditd_conn);
-	if (!ac || !ac->pid)
+	adutidConnection = rcu_dereference(auditd_conn);
+	if (!adutidConnection || !adutidConnection->pid)
 		pid = 0;
 	else
-		pid = pid_vnr(ac->pid);
+		pid = pid_vnr(adutidConnection->pid);
 	rcu_read_unlock();
 
 	return pid;
@@ -284,13 +284,13 @@ static pid_t auditd_pid_vnr(void)
  */
 static struct sock *audit_get_sk(const struct net *net)
 {
-	struct audit_net *aunet;
+	struct audit_net *auditNet;
 
 	if (!net)
 		return NULL;
 
-	aunet = net_generic(net, audit_net_id);
-	return aunet->sk;
+	auditNet = net_generic(net, audit_net_id);
+	return auditNet->sk;
 }
 
 void audit_panic(const char *message)
@@ -380,19 +380,19 @@ void audit_log_lost(const char *message)
 static int audit_log_config_change(char *function_name, u32 new, u32 old,
 				   int allow_changes)
 {
-	struct audit_buffer *ab;
+	struct audit_buffer *auditBuffer;
 	int rc = 0;
 
-	ab = audit_log_start(audit_context(), GFP_KERNEL, AUDIT_CONFIG_CHANGE);
-	if (unlikely(!ab))
+	auditBuffer = audit_log_start(audit_context(), GFP_KERNEL, AUDIT_CONFIG_CHANGE);
+	if (unlikely(!auditBuffer))
 		return rc;
-	audit_log_format(ab, "op=set %s=%u old=%u ", function_name, new, old);
-	audit_log_session_info(ab);
-	rc = audit_log_task_context(ab);
+	audit_log_format(auditBuffer, "op=set %s=%u old=%u ", function_name, new, old);
+	audit_log_session_info(auditBuffer);
+	rc = audit_log_task_context(auditBuffer);
 	if (rc)
 		allow_changes = 0; /* Something weird, deny request */
-	audit_log_format(ab, " res=%d", allow_changes);
-	audit_log_end(ab);
+	audit_log_format(auditBuffer, " res=%d", allow_changes);
+	audit_log_end(auditBuffer);
 	return rc;
 }
 
@@ -471,12 +471,12 @@ static int audit_set_failure(u32 state)
  */
 static void auditd_conn_free(struct rcu_head *rcu)
 {
-	struct auditd_connection *ac;
+	struct auditd_connection *adutidConnection;
 
-	ac = container_of(rcu, struct auditd_connection, rcu);
-	put_pid(ac->pid);
-	put_net(ac->net);
-	kfree(ac);
+	adutidConnection = container_of(rcu, struct auditd_connection, rcu);
+	put_pid(adutidConnection->pid);
+	put_net(adutidConnection->net);
+	kfree(adutidConnection);
 }
 
 /**
