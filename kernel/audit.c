@@ -33,7 +33,7 @@
 
 #include <linux/file.h>
 #include <linux/init.h>
-#include <linux/types.h>
+#include <linux/types.h>'
 #include <linux/atomic.h>
 #include <linux/mm.h>
 #include <linux/export.h>
@@ -614,13 +614,13 @@ static void auditd_reset(const struct auditd_connection *ac)
 {
 	unsigned long flags;
 	struct sk_buff *skb;
-	struct auditd_connection *ac_old;
+	struct auditd_connection *auditdConnection_old;
 
 	/* if it isn't already broken, break the connection */
 	spin_lock_irqsave(&auditd_conn_lock, flags);
-	ac_old = rcu_dereference_protected(auditd_conn,
+	auditdConnection_old = rcu_dereference_protected(auditd_conn,
 					   lockdep_is_held(&auditd_conn_lock));
-	if (ac && ac != ac_old) {
+	if (auditdConnection && auditdConnection != auditdConnection_old) {
 		/* someone already registered a new auditd connection */
 		spin_unlock_irqrestore(&auditd_conn_lock, flags);
 		return;
@@ -628,8 +628,8 @@ static void auditd_reset(const struct auditd_connection *ac)
 	rcu_assign_pointer(auditd_conn, NULL);
 	spin_unlock_irqrestore(&auditd_conn_lock, flags);
 
-	if (ac_old)
-		call_rcu(&ac_old->rcu, auditd_conn_free);
+	if (auditdConnection_old)
+		call_rcu(&auditdConnection_old->rcu, auditd_conn_free);
 
 	/* flush the retry queue to the hold queue, but don't touch the main
 	 * queue since we need to process that normally for multicast */
@@ -654,7 +654,7 @@ static int auditd_send_unicast_skb(struct sk_buff *skb)
 	u32 portid;
 	struct net *net;
 	struct sock *sk;
-	struct auditd_connection *ac;
+	struct auditd_connection *auditdConnection;
 
 	/* NOTE: we can't call netlink_unicast while in the RCU section so
 	 *       take a reference to the network namespace and grab local
@@ -664,16 +664,16 @@ static int auditd_send_unicast_skb(struct sk_buff *skb)
 	 *       section netlink_unicast() should safely return an error */
 
 	rcu_read_lock();
-	ac = rcu_dereference(auditd_conn);
-	if (!ac) {
+	auditdConnection = rcu_dereference(auditd_conn);
+	if (!auditdConnection) {
 		rcu_read_unlock();
 		kfree_skb(skb);
 		rc = -ECONNREFUSED;
 		goto err;
 	}
-	net = get_net(ac->net);
+	net = get_net(auditdConnection->net);
 	sk = audit_get_sk(net);
-	portid = ac->portid;
+	portid = auditdConnection->portid;
 	rcu_read_unlock();
 
 	rc = netlink_unicast(sk, skb, portid, 0);
@@ -684,8 +684,8 @@ static int auditd_send_unicast_skb(struct sk_buff *skb)
 	return rc;
 
 err:
-	if (ac && rc == -ECONNREFUSED)
-		auditd_reset(ac);
+	if (auditdConnection && rc == -ECONNREFUSED)
+		auditd_reset(auditdConnection);
 	return rc;
 }
 
@@ -808,7 +808,7 @@ static int kauditd_thread(void *dummy)
 	u32 portid = 0;
 	struct net *net = NULL;
 	struct sock *sk = NULL;
-	struct auditd_connection *ac;
+	struct auditd_connection *auditdConnection;
 
 #define UNICAST_RETRIES 5
 
@@ -816,23 +816,23 @@ static int kauditd_thread(void *dummy)
 	while (!kthread_should_stop()) {
 		/* NOTE: see the lock comments in auditd_send_unicast_skb() */
 		rcu_read_lock();
-		ac = rcu_dereference(auditd_conn);
-		if (!ac) {
+		auditdConnection = rcu_dereference(auditd_conn);
+		if (!auditdConnection) {
 			rcu_read_unlock();
 			goto main_queue;
 		}
-		net = get_net(ac->net);
+		net = get_net(auditdConnection->net);
 		sk = audit_get_sk(net);
-		portid = ac->portid;
+		portid = auditdConnection->portid;
 		rcu_read_unlock();
 
 		/* attempt to flush the hold queue */
 		rc = kauditd_send_queue(sk, portid,
 					&audit_hold_queue, UNICAST_RETRIES,
 					NULL, kauditd_rehold_skb);
-		if (ac && rc < 0) {
+		if (auditdConnection && rc < 0) {
 			sk = NULL;
-			auditd_reset(ac);
+			auditd_reset(auditdConnection);
 			goto main_queue;
 		}
 
@@ -840,9 +840,9 @@ static int kauditd_thread(void *dummy)
 		rc = kauditd_send_queue(sk, portid,
 					&audit_retry_queue, UNICAST_RETRIES,
 					NULL, kauditd_hold_skb);
-		if (ac && rc < 0) {
+		if (auditdConnection && rc < 0) {
 			sk = NULL;
-			auditd_reset(ac);
+			auditd_reset(auditdConnection);
 			goto main_queue;
 		}
 
@@ -855,8 +855,8 @@ main_queue:
 					kauditd_send_multicast_skb,
 					(sk ?
 					 kauditd_retry_skb : kauditd_hold_skb));
-		if (ac && rc < 0)
-			auditd_reset(ac);
+		if (auditdConnection && rc < 0)
+			auditd_reset(auditdConnection);
 		sk = NULL;
 
 		/* drop our netns reference, no auditd sends past this line */
