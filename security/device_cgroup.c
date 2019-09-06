@@ -592,22 +592,21 @@ static int propagate_exception(struct dev_cgroup *devcg_root,
  * new access is only allowed if you're in the top-level cgroup, or your
  * parent cgroup has the access you're asking for.
  */
-static int devcgroup_update_access(struct dev_cgroup *devcgroup,
-				   int filetype, char *buffer)
+static int devcgroup_update_access(struct dev_cgroup *devcgroup, int filetype, char *buffer)
 {
-	const char *b;
+	const char *buffer_const;
 	char temp[12];		/* 11 + 1 characters needed for a u32 */
 	int count, rc = 0;
-	struct dev_exception_item ex;
+	struct dev_exception_item exception;
 	struct dev_cgroup *parent = css_to_devcgroup(devcgroup->css.parent);
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	memset(&ex, 0, sizeof(ex));
-	b = buffer;
+	memset(&exception, 0, sizeof(exception));
+	buffer_const = buffer;
 
-	switch (*b) {
+	switch (*buffer_const) {
 	case 'a':
 		switch (filetype) {
 		case DEVCG_ALLOW:
@@ -638,69 +637,69 @@ static int devcgroup_update_access(struct dev_cgroup *devcgroup,
 		}
 		return 0;
 	case 'b':
-		ex.type = DEVCG_DEV_BLOCK;
+		exception.type = DEVCG_DEV_BLOCK;
 		break;
 	case 'c':
-		ex.type = DEVCG_DEV_CHAR;
+		exception.type = DEVCG_DEV_CHAR;
 		break;
 	default:
 		return -EINVAL;
 	}
-	b++;
-	if (!isspace(*b))
+	buffer_const++;
+	if (!isspace(*buffer_const))
 		return -EINVAL;
-	b++;
-	if (*b == '*') {
-		ex.major = ~0;
-		b++;
-	} else if (isdigit(*b)) {
+	buffer_const++;
+	if (*buffer_const == '*') {
+		exception.major = ~0;
+		buffer_const++;
+	} else if (isdigit(*buffer_const)) {
 		memset(temp, 0, sizeof(temp));
 		for (count = 0; count < sizeof(temp) - 1; count++) {
-			temp[count] = *b;
-			b++;
-			if (!isdigit(*b))
+			temp[count] = *buffer_const;
+			buffer_const++;
+			if (!isdigit(*buffer_const))
 				break;
 		}
-		rc = kstrtou32(temp, 10, &ex.major);
+		rc = kstrtou32(temp, 10, &exception.major);
 		if (rc)
 			return -EINVAL;
 	} else {
 		return -EINVAL;
 	}
-	if (*b != ':')
+	if (*buffer_const != ':')
 		return -EINVAL;
-	b++;
+	buffer_const++;
 
 	/* read minor */
-	if (*b == '*') {
-		ex.minor = ~0;
-		b++;
-	} else if (isdigit(*b)) {
+	if (*buffer_const == '*') {
+		exception.minor = ~0;
+		buffer_const++;
+	} else if (isdigit(*buffer_const)) {
 		memset(temp, 0, sizeof(temp));
 		for (count = 0; count < sizeof(temp) - 1; count++) {
-			temp[count] = *b;
-			b++;
-			if (!isdigit(*b))
+			temp[count] = *buffer_const;
+			buffer_const++;
+			if (!isdigit(*buffer_const))
 				break;
 		}
-		rc = kstrtou32(temp, 10, &ex.minor);
+		rc = kstrtou32(temp, 10, &exception.minor);
 		if (rc)
 			return -EINVAL;
 	} else {
 		return -EINVAL;
 	}
-	if (!isspace(*b))
+	if (!isspace(*buffer_const))
 		return -EINVAL;
-	for (b++, count = 0; count < 3; count++, b++) {
-		switch (*b) {
+	for (buffer_const++, count = 0; count < 3; count++, buffer_const++) {
+		switch (*buffer_const) {
 		case 'r':
-			ex.access |= DEVCG_ACC_READ;
+			exception.access |= DEVCG_ACC_READ;
 			break;
 		case 'w':
-			ex.access |= DEVCG_ACC_WRITE;
+			exception.access |= DEVCG_ACC_WRITE;
 			break;
 		case 'm':
-			ex.access |= DEVCG_ACC_MKNOD;
+			exception.access |= DEVCG_ACC_MKNOD;
 			break;
 		case '\n':
 		case '\0':
@@ -720,15 +719,15 @@ static int devcgroup_update_access(struct dev_cgroup *devcgroup,
 		 */
 		if (devcgroup->behavior == DEVCG_DEFAULT_ALLOW) {
 			/* Check if the parent allows removing it first */
-			if (!parent_allows_removal(devcgroup, &ex))
+			if (!parent_allows_removal(devcgroup, &exception))
 				return -EPERM;
-			dev_exception_rm(devcgroup, &ex);
+			dev_exception_rm(devcgroup, &exception);
 			break;
 		}
 
-		if (!parent_has_perm(devcgroup, &ex))
+		if (!parent_has_perm(devcgroup, &exception))
 			return -EPERM;
-		rc = dev_exception_add(devcgroup, &ex);
+		rc = dev_exception_add(devcgroup, &exception);
 		break;
 	case DEVCG_DENY:
 		/*
@@ -737,14 +736,14 @@ static int devcgroup_update_access(struct dev_cgroup *devcgroup,
 		 * don't want to break compatibility
 		 */
 		if (devcgroup->behavior == DEVCG_DEFAULT_DENY)
-			dev_exception_rm(devcgroup, &ex);
+			dev_exception_rm(devcgroup, &exception);
 		else
-			rc = dev_exception_add(devcgroup, &ex);
+			rc = dev_exception_add(devcgroup, &exception);
 
 		if (rc)
 			break;
 		/* we only propagate new restrictions */
-		rc = propagate_exception(devcgroup, &ex);
+		rc = propagate_exception(devcgroup, &exception);
 		break;
 	default:
 		rc = -EINVAL;
